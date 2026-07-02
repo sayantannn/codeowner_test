@@ -1,3 +1,74 @@
-# Checking for your specific approval
-echo "Checking for approval..."
-HAS_APPROVAL=$(gh api repos/$REPO/pulls/$PR_NUMBER/reviews --jq 'map(select(.user.login=="sayantannn" and .state=="APPROVED")) | length')
+name: Strict Codeowners Enforcement
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  pull_request_review:
+    types: [submitted, dismissed]
+
+# These permissions are required so the GitHub Token 
+# has the authority to dismiss stale reviews via the API.
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  enforce-codeowners:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v42
+
+      - name: Enforce Rules & Dismiss Reviews
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          # 1. Check if protected files are modified
+          PROTECTED_CHANGED=false
+          for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+            if [[ "$file" == "src/gai/outputs/calculators/jobs/"*.py ]] || [[ "$file" == ".github/CODEOWNERS" ]]; then
+              PROTECTED_CHANGED=true
+              echo "Protected file changed: $file"
+            fi
+          done
+
+          if [ "$PROTECTED_CHANGED" = false ]; then
+            echo "No protected files modified. Passing check."
+            exit 0
+          fi
+
+          # 2. If this is a new commit (synchronize), dismiss existing approvals
+          if [ "${{ github.event.action }}" == "synchronize" ]; then
+            echo "New commit detected on protected files. Dismissing previous approvals..."
+            
+            REVIEWS=$(gh api repos/$REPO/pulls/$PR_NUMBER/reviews --jq '.[] | select(.state=="APPROVED") | .id')
+            for REVIEW_ID in $REVIEWS; do
+              gh api --method PUT \
+                -H "Accept: application/vnd.github+json" \
+                repos/$REPO/pulls/$PR_NUMBER/reviews/$REVIEW_ID/dismissals \
+                -f message="Protected files modified in new commit. Re-review required."
+            done
+            
+            echo "Approvals dismissed. Failing check to enforce re-review."
+            exit 1
+          fi
+
+          # 3. Check for specific approval
+          echo "Checking for approval from sayantannn..."
+          HAS_APPROVAL=$(gh api repos/$REPO/pulls/$PR_NUMBER/reviews --jq 'map(select(.user.login=="sayantannn" and .state=="APPROVED")) | length')
+          
+          if [ "$HAS_APPROVAL" -gt 0 ]; then
+            echo "Approval found! Passing check."
+            exit 0
+          else
+            echo "Error: Modification to protected files requires approval from sayantannn."
+            exit 1
+          fi
