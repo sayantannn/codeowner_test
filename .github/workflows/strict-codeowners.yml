@@ -1,0 +1,3 @@
+# Checking for your specific approval
+echo "Checking for approval..."
+HAS_APPROVAL=$(gh api repos/$REPO/pulls/$PR_NUMBER/reviews --jq 'map(select(.user.login=="sayantannn" and .state=="APPROVED")) | length')

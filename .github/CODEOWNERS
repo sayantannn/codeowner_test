@@ -1,0 +1,2 @@
+/.github/CODEOWNERS                              @sayantannn
+/src/gai/outputs/calculators/jobs/*.py           @sayantannn
