@@ -3,7 +3,7 @@
 def run_dummy_calculator():
     """
     Simulates a high-risk calculator job. 
-    Changes to this file should require strict CODEOWNER review.
+    Changes to this file should require for a strict CODEOWNER review.
     """
     print("Running dummy calculator job...")
     return True
